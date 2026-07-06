@@ -6,7 +6,7 @@ export function authCommand(): Command {
     .description("Authenticate with Google Drive (OAuth2 browser flow)")
     .option(
       "--credentials <path>",
-      "path to credentials.json (default: $GDRIVE_CREDENTIALS_PATH, ./credentials.json, or ~/.local/share/gdrive-exporter/credentials.json)",
+      "path to credentials.json (default: $GCP_CREDENTIALS_JSON content, $GDRIVE_CREDENTIALS_PATH, ./credentials.json, or ~/.local/share/gdrive-exporter/credentials.json)",
     )
     .action(async (options: { credentials?: string }) => {
       await authenticate(options.credentials);

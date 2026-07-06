@@ -5,3 +5,4 @@ token.json
 gdrive-data/
 *.log
 .DS_Store
+.env

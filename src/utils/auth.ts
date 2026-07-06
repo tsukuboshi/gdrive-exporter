@@ -16,7 +16,10 @@ const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 
-/** Searched in order when --credentials is not given. */
+/** Env var holding the full credentials.json content (e.g. via .env). */
+export const CREDENTIALS_ENV_VAR = "GCP_CREDENTIALS_JSON";
+
+/** Searched in order when neither --credentials nor the env var is given. */
 const CREDENTIALS_CANDIDATES = [
   process.env.GDRIVE_CREDENTIALS_PATH,
   "./credentials.json",
@@ -37,7 +40,8 @@ async function resolveCredentialsPath(explicitPath?: string): Promise<string> {
   }
   throw new Error(
     `credentials.json not found. Searched: ${CREDENTIALS_CANDIDATES.join(", ")}. ` +
-      "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON.",
+      "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON, " +
+      `or set ${CREDENTIALS_ENV_VAR} (e.g. in .env) to the JSON content.`,
   );
 }
 
@@ -46,9 +50,37 @@ interface ClientCredentials {
   clientSecret: string;
 }
 
-async function readClientCredentials(
+/** Extracts the OAuth client id/secret from credentials.json content. */
+export function parseClientCredentials(
+  raw: string,
+  source: string,
+): ClientCredentials {
+  let parsed: {
+    installed?: { client_id?: string; client_secret?: string };
+    web?: { client_id?: string; client_secret?: string };
+  };
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    throw new Error(`Invalid JSON in ${source}`);
+  }
+  const key = parsed.installed ?? parsed.web;
+  if (!key?.client_id || !key.client_secret) {
+    throw new Error(`Unrecognized credentials format in ${source}`);
+  }
+  return { clientId: key.client_id, clientSecret: key.client_secret };
+}
+
+export async function readClientCredentials(
   explicitPath?: string,
 ): Promise<ClientCredentials> {
+  // --credentials beats the env var; the env var beats the file search.
+  const envJson = process.env[CREDENTIALS_ENV_VAR];
+  if (!explicitPath && envJson) {
+    console.log(`Using credentials: ${CREDENTIALS_ENV_VAR} (env)`);
+    return parseClientCredentials(envJson, CREDENTIALS_ENV_VAR);
+  }
+
   const credentialsPath = await resolveCredentialsPath(explicitPath);
   let raw: string;
   try {
@@ -59,16 +91,8 @@ async function readClientCredentials(
         "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON.",
     );
   }
-  const parsed = JSON.parse(raw) as {
-    installed?: { client_id: string; client_secret: string };
-    web?: { client_id: string; client_secret: string };
-  };
-  const key = parsed.installed ?? parsed.web;
-  if (!key) {
-    throw new Error(`Unrecognized credentials format in ${credentialsPath}`);
-  }
   console.log(`Using credentials: ${credentialsPath}`);
-  return { clientId: key.client_id, clientSecret: key.client_secret };
+  return parseClientCredentials(raw, credentialsPath);
 }
 
 async function saveToken(tokens: Auth.Credentials): Promise<void> {

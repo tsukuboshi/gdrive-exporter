@@ -36,6 +36,7 @@
   "license": "MIT",
   "dependencies": {
     "commander": "^15.0.0",
+    "dotenv": "^17.4.2",
     "googleapis": "^173.0.0",
     "open": "^11.0.0",
     "p-limit": "^7.3.0"

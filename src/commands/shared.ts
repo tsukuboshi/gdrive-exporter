@@ -43,7 +43,7 @@ export function withCommonExportOptions(command: Command): Command {
     )
     .option(
       "--credentials <path>",
-      "path to credentials.json (default: auto-discover)",
+      "path to credentials.json (default: $GCP_CREDENTIALS_JSON or auto-discover)",
     )
     .option(
       "--include <pattern>",
