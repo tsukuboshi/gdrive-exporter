@@ -1,0 +1,54 @@
+{
+  "name": "gdrive-exporter",
+  "version": "0.1.0",
+  "description": "CLI tool to export Google Drive files (Docs to Markdown, Sheets to CSV, Slides to PDF)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "gdrive-exporter": "./bin/run.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check --fix src/",
+    "format": "biome format --write src/",
+    "prepublishOnly": "pnpm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "keywords": [
+    "google-drive",
+    "export",
+    "cli",
+    "docs",
+    "sheets",
+    "slides",
+    "markdown",
+    "csv"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "googleapis": "^173.0.0",
+    "open": "^11.0.0",
+    "p-limit": "^7.3.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "google-auth-library": "^10.9.0"
+    }
+  }
+}

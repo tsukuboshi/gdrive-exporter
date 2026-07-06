@@ -1,0 +1,7 @@
+node_modules/
+dist/
+credentials.json
+token.json
+gdrive-data/
+*.log
+.DS_Store
