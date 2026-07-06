@@ -1,3 +1,4 @@
+import { relative, sep } from "node:path";
 import type { Command } from "commander";
 import type { Auth } from "googleapis";
 import pLimit from "p-limit";
@@ -5,6 +6,7 @@ import { loadAuthorizedClient } from "../utils/auth.js";
 import { parseFolderId } from "../utils/common.js";
 import { type ExportTask, executeExportTasks } from "../utils/downloader.js";
 import { listFilesInFolder } from "../utils/drive-api.js";
+import { matchesAnyGlob } from "../utils/glob.js";
 import { printSummary } from "../utils/log.js";
 import type { PlannerContext } from "../utils/planner.js";
 import type { DriveFile } from "../utils/types.js";
@@ -14,6 +16,7 @@ export interface CommonExportOptions {
   force: boolean;
   concurrency: number;
   credentials?: string;
+  include: string[];
 }
 
 export function parseConcurrency(value: string): number {
@@ -41,6 +44,13 @@ export function withCommonExportOptions(command: Command): Command {
     .option(
       "--credentials <path>",
       "path to credentials.json (default: auto-discover)",
+    )
+    .option(
+      "--include <pattern>",
+      "export only files matching this glob (relative path, or file name if " +
+        "the pattern has no '/'; repeatable)",
+      (value: string, previous: string[]) => previous.concat(value),
+      [] as string[],
     );
 }
 
@@ -98,10 +108,24 @@ export async function runExport(
     outputDir: options.output,
     usedPaths: new Set<string>(),
   };
-  const tasks = await planTasks(ctx, files);
+  let tasks = await planTasks(ctx, files);
   if (tasks.length === 0) {
     console.log("No files found in folder.");
     return;
+  }
+
+  if (options.include.length > 0) {
+    const total = tasks.length;
+    tasks = tasks.filter((task) =>
+      matchesAnyGlob(
+        relative(options.output, task.localPath).split(sep).join("/"),
+        options.include,
+      ),
+    );
+    console.log(`--include matched ${tasks.length} of ${total} files.`);
+    if (tasks.length === 0) {
+      return;
+    }
   }
 
   const summary = await executeExportTasks(tasks, {

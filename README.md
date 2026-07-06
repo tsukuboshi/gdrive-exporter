@@ -66,16 +66,19 @@ gdrive-exporter sheets <folder-id> --all-sheets
 
 # スライドのみ PDF で
 gdrive-exporter slides <folder-id>
+
+# 特定ファイルだけ上書きで再取得（--include + -f）
+gdrive-exporter all <folder-id> --include "プロジェクト/振り返り*.md" -f
 ```
 
 ### コマンド一覧
 
 ```text
 gdrive-exporter auth [--credentials <path>]
-gdrive-exporter docs <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--all-tabs]
-gdrive-exporter sheets <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--all-sheets]
-gdrive-exporter slides <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>]
-gdrive-exporter all <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--all-sheets] [--all-tabs]
+gdrive-exporter docs <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--include <pattern>] [--all-tabs]
+gdrive-exporter sheets <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--include <pattern>] [--all-sheets]
+gdrive-exporter slides <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--include <pattern>]
+gdrive-exporter all <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--include <pattern>] [--all-sheets] [--all-tabs]
 ```
 
 ### 共通オプション
@@ -86,6 +89,16 @@ gdrive-exporter all <folder> [-o <dir>] [-f] [-c <n>] [--credentials <path>] [--
 | `-f, --force` | 既存ファイルを上書き | オフ（既存ファイルはスキップ） |
 | `-c, --concurrency <n>` | 並列ダウンロード数 | 5 |
 | `--credentials <path>` | credentials.json のパス | 自動探索（上記の探索順） |
+| `--include <pattern>` | エクスポート対象を glob で絞り込み（複数指定可） | なし（全ファイル対象） |
+
+### 対象の絞り込み（`--include`）
+
+`--include` はエクスポート後のローカル相対パス（例: `プロジェクト/振り返り 06_29.md`）に対してマッチします。
+
+- `*` はパス区切り（`/`）以外の任意文字、`**` は `/` を含む任意文字、`?` は任意の 1 文字
+- パターンに `/` を含まない場合はファイル名のみでマッチ（`*.csv` は全サブフォルダの CSV にマッチ）
+- 複数回指定でき、いずれかにマッチしたファイルが対象になります
+- `-f` と組み合わせると「特定ファイルだけ上書きで再取得」ができます
 
 ### ドキュメントのタブ（`--all-tabs`）
 
