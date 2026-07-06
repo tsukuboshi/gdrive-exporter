@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Auth, google } from "googleapis";
 import open from "open";
+import { errorMessage } from "./common.js";
 import { stripControlChars } from "./log.js";
 
 const CONFIG_DIR = join(homedir(), ".gdrive-exporter");
@@ -19,18 +20,29 @@ const SCOPES = [
 /** Env var holding the full credentials.json content (e.g. via .env). */
 export const CREDENTIALS_ENV_VAR = "GCP_CREDENTIALS_JSON";
 
-/** Searched in order when neither --credentials nor the env var is given. */
-const CREDENTIALS_CANDIDATES = [
-  process.env.GDRIVE_CREDENTIALS_PATH,
-  "./credentials.json",
-  join(homedir(), ".local/share/gdrive-exporter/credentials.json"),
-].filter((path): path is string => path != null && path !== "");
+const CREDENTIALS_GUIDANCE =
+  "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON, " +
+  `or set ${CREDENTIALS_ENV_VAR} (e.g. in .env) to the JSON content.`;
+
+/**
+ * Searched in order when neither --credentials nor the env var is given.
+ * process.env is read lazily so values loaded from .env in main() are seen
+ * (module evaluation happens before dotenv runs).
+ */
+function credentialsCandidates(): string[] {
+  return [
+    process.env.GDRIVE_CREDENTIALS_PATH,
+    "./credentials.json",
+    join(homedir(), ".local/share/gdrive-exporter/credentials.json"),
+  ].filter((path): path is string => path != null && path !== "");
+}
 
 async function resolveCredentialsPath(explicitPath?: string): Promise<string> {
   if (explicitPath) {
     return explicitPath;
   }
-  for (const candidate of CREDENTIALS_CANDIDATES) {
+  const candidates = credentialsCandidates();
+  for (const candidate of candidates) {
     try {
       await access(candidate);
       return candidate;
@@ -39,9 +51,7 @@ async function resolveCredentialsPath(explicitPath?: string): Promise<string> {
     }
   }
   throw new Error(
-    `credentials.json not found. Searched: ${CREDENTIALS_CANDIDATES.join(", ")}. ` +
-      "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON, " +
-      `or set ${CREDENTIALS_ENV_VAR} (e.g. in .env) to the JSON content.`,
+    `credentials.json not found. Searched: ${candidates.join(", ")}. ${CREDENTIALS_GUIDANCE}`,
   );
 }
 
@@ -50,19 +60,25 @@ interface ClientCredentials {
   clientSecret: string;
 }
 
+interface OAuthClientKey {
+  client_id?: string;
+  client_secret?: string;
+}
+
 /** Extracts the OAuth client id/secret from credentials.json content. */
 export function parseClientCredentials(
   raw: string,
   source: string,
+  options: { redactParseError?: boolean } = {},
 ): ClientCredentials {
-  let parsed: {
-    installed?: { client_id?: string; client_secret?: string };
-    web?: { client_id?: string; client_secret?: string };
-  };
+  let parsed: { installed?: OAuthClientKey; web?: OAuthClientKey };
   try {
-    parsed = JSON.parse(raw) as typeof parsed;
-  } catch {
-    throw new Error(`Invalid JSON in ${source}`);
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    // V8 SyntaxError messages quote a fragment of the input; redact them for
+    // env values so a mis-quoted secret cannot leak into terminal or CI logs.
+    const detail = options.redactParseError ? "" : `: ${errorMessage(error)}`;
+    throw new Error(`Invalid JSON in ${source}${detail}`);
   }
   const key = parsed.installed ?? parsed.web;
   if (!key?.client_id || !key.client_secret) {
@@ -75,24 +91,36 @@ export async function readClientCredentials(
   explicitPath?: string,
 ): Promise<ClientCredentials> {
   // --credentials beats the env var; the env var beats the file search.
-  const envJson = process.env[CREDENTIALS_ENV_VAR];
+  const envJson = process.env[CREDENTIALS_ENV_VAR]?.trim();
   if (!explicitPath && envJson) {
+    let credentials: ClientCredentials;
+    try {
+      credentials = parseClientCredentials(envJson, CREDENTIALS_ENV_VAR, {
+        redactParseError: true,
+      });
+    } catch (error) {
+      throw new Error(
+        `${errorMessage(error)}. ${CREDENTIALS_ENV_VAR} must contain the ` +
+          "JSON content of credentials.json, not a file path.",
+      );
+    }
     console.log(`Using credentials: ${CREDENTIALS_ENV_VAR} (env)`);
-    return parseClientCredentials(envJson, CREDENTIALS_ENV_VAR);
+    return credentials;
   }
 
   const credentialsPath = await resolveCredentialsPath(explicitPath);
   let raw: string;
   try {
     raw = await readFile(credentialsPath, "utf8");
-  } catch {
+  } catch (error) {
     throw new Error(
-      `credentials.json not found at ${credentialsPath}. ` +
-        "Create an OAuth client (Desktop app) in Google Cloud Console and download its JSON.",
+      `Failed to read credentials at ${credentialsPath} ` +
+        `(${errorMessage(error)}). ${CREDENTIALS_GUIDANCE}`,
     );
   }
+  const credentials = parseClientCredentials(raw, credentialsPath);
   console.log(`Using credentials: ${credentialsPath}`);
-  return parseClientCredentials(raw, credentialsPath);
+  return credentials;
 }
 
 async function saveToken(tokens: Auth.Credentials): Promise<void> {

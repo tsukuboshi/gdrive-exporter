@@ -64,13 +64,56 @@ describe("readClientCredentials", () => {
     });
   });
 
-  it("ignores an empty GCP_CREDENTIALS_JSON", async () => {
+  it("falls back to file search when GCP_CREDENTIALS_JSON is empty", async () => {
     vi.stubEnv(CREDENTIALS_ENV_VAR, "");
     const path = await writeCredentialsFile("file-id", "file-secret");
-    await expect(readClientCredentials(path)).resolves.toEqual({
+    vi.stubEnv("GDRIVE_CREDENTIALS_PATH", path);
+    await expect(readClientCredentials()).resolves.toEqual({
       clientId: "file-id",
       clientSecret: "file-secret",
     });
+  });
+
+  it("falls back to file search when GCP_CREDENTIALS_JSON is whitespace-only", async () => {
+    vi.stubEnv(CREDENTIALS_ENV_VAR, " \n");
+    const path = await writeCredentialsFile("file-id", "file-secret");
+    vi.stubEnv("GDRIVE_CREDENTIALS_PATH", path);
+    await expect(readClientCredentials()).resolves.toEqual({
+      clientId: "file-id",
+      clientSecret: "file-secret",
+    });
+  });
+
+  it("reads GDRIVE_CREDENTIALS_PATH lazily so .env values are honored", async () => {
+    // The var is stubbed after module load; a module-level snapshot would miss it.
+    const path = await writeCredentialsFile("lazy-id", "lazy-secret");
+    vi.stubEnv("GDRIVE_CREDENTIALS_PATH", path);
+    await expect(readClientCredentials()).resolves.toEqual({
+      clientId: "lazy-id",
+      clientSecret: "lazy-secret",
+    });
+  });
+
+  it("explains that GCP_CREDENTIALS_JSON must hold JSON content, not a path", async () => {
+    vi.stubEnv(CREDENTIALS_ENV_VAR, "./credentials.json");
+    await expect(readClientCredentials()).rejects.toThrow(
+      "must contain the JSON content of credentials.json, not a file path",
+    );
+  });
+
+  it("does not echo fragments of a malformed GCP_CREDENTIALS_JSON value", async () => {
+    // V8 SyntaxError messages quote the input around the error position;
+    // a mis-quoted value must not leak the secret into the error message.
+    vi.stubEnv(
+      CREDENTIALS_ENV_VAR,
+      '{"installed":{"client_secret":GOCSPX-TopSecret}}',
+    );
+    const error = await readClientCredentials().then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error?.message).toContain(`Invalid JSON in ${CREDENTIALS_ENV_VAR}`);
+    expect(error?.message).not.toContain("GOCSPX");
   });
 
   it("prefers an explicit --credentials path over the env var", async () => {
